@@ -1,0 +1,17 @@
+[package]
+name = "devices"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+thiserror = "1.0" 
+libc = "0.2.155"   
+sync = { path = "../sync" }
+base = { path = "../base" }
+log = "0.4.21"   
+chrono = "0.4.38"  
+vmm-sys-util = "0.12.1" 
+vm-memory = { version = "0.14", features = ["backend-mmap"]}
+hypervisor = { path = "../hypervisor" }

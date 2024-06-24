@@ -1,0 +1,31 @@
+[package]
+name = "vmbox"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+kvm-bindings = { version = "0.8", features = ["fam-wrappers"]}
+kvm-ioctls = "0.17"
+vm-memory = { version = "0.14", features = ["backend-mmap"]}
+thiserror = "1.0" 
+anyhow = "1.0" 
+clap = { version = "4.5", features = ["derive"] }
+nix = "0.29" 
+linux-loader = "0.11.0" 
+log = "0.4.21"   
+env_logger = "0.11.3" 
+sync = { path = "sync" }
+base = { path = "base" }
+hypervisor = { path = "hypervisor" }
+devices = { path = "devices" }
+
+[workspace]
+members = [ 
+    "base",
+    "base/event_token_derive",
+    "devices",
+    "hypervisor",
+    "sync",
+]
