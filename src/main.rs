@@ -6,29 +6,25 @@ use std::sync::{Arc, OnceLock};
 use std::{mem::MaybeUninit, path::PathBuf};
 
 use anyhow::{anyhow, Context};
+use arch::{CMDLINE_START, FIRST_ADDR_PAST_32BITS, HIGH_RAM_START, IDENTIFY_MAP_ADDR, TSS_ADDRESS, TSS_ADDRESS_END, ZERO_PAGE_START};
 use clap::Parser;
 use devices::irqchip::{IrqChip, IrqEventSource, KvmKernelIrqChip};
 use devices::serial_device::ConsoleInput;
 use devices::{Bus, BusDevice, BusType, Serial, SERIAL_ADDR};
 use kvm_ioctls::VcpuExit;
 use log::info;
+use resources::AddressRange;
 use sync::Mutex;
 use vm_memory::{FileOffset, GuestAddress, GuestMemory, GuestMemoryMmap, MmapRegion};
 
 use hypervisor::{KvmVm, Vm};
-use linux_loader::loader::bootparam::{boot_e820_entry, boot_params, CAN_USE_HEAP, KEEP_SEGMENTS};
+use linux_loader::loader::bootparam::{boot_params, CAN_USE_HEAP, KEEP_SEGMENTS};
 
 mod mmap;
 
 const RAM_SIZE: usize = 1 << 31;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
 const X86_64_SERIAL_2_4_IRQ: u32 = 3;
-
-// TODO(tinqian.zyf): 为啥是这两个地址
-// TSS后面跟着Identify map、TSS的大小是 3 * 4KB
-// Identify map 的大小是4K
-const TSS_ADDRESS: usize = 0xfffbd000;
-const IDENTIFY_MAP_ADDR: u64 = 0xffffc000;
 
 const KERNEL_OPTS: &'static str = "console=ttyS0 pci=conf1";
 
@@ -101,20 +97,31 @@ fn vm_load_initrd<T: GuestMemory + Send, P: AsRef<Path>>(
     let region = MmapRegion::<()>::from_file(initrd_file, initrd_size as usize)
         .context("failed to mmap the initrd")?;
 
-    let raw_boot = mem.get_host_address(GuestAddress(0x10000))?;
+    let raw_boot = mem.get_host_address(ZERO_PAGE_START)?;
     let boot = unsafe { &mut *(raw_boot as *const boot_params as *mut boot_params) };
+
+    let mut initrd_addr_max = u64::from(boot.hdr.initrd_addr_max);
+    // Default initrd_addr_max for old kernels (see Documentation/x86/boot.txt).
+    if boot.hdr.initrd_addr_max == 0 {
+        initrd_addr_max = 0x37FFFFFF;
+    }
 
     let mut initrd_addr = boot.hdr.initrd_addr_max & !0xfffff;
 
+    let mem_max = mem.last_addr().0 - 1;
+    if initrd_addr_max > mem_max {
+        initrd_addr_max = mem_max;
+    }
+
     loop {
-        if initrd_addr < 0x100000 {
+        if initrd_addr < HIGH_RAM_START.0 as u32 {
             return Err(anyhow!("Not enough memory for initrd"));
         }
         if (initrd_addr as usize) < (RAM_SIZE - region.size()) {
             break;
         }
 
-        initrd_addr = initrd_addr - 0x100000;
+        initrd_addr = initrd_addr - HIGH_RAM_START.0 as u32;
     }
 
     let kernel_initrd_addr = mem.get_host_address(GuestAddress(initrd_addr as u64))?;
@@ -124,6 +131,29 @@ fn vm_load_initrd<T: GuestMemory + Send, P: AsRef<Path>>(
 
     boot.hdr.ramdisk_image = initrd_addr;
     boot.hdr.ramdisk_size = initrd_size as u32;
+
+    Ok(())
+}
+
+enum E820Type {
+    Ram = 0x01,
+    Reserved = 0x2,
+}
+
+
+/// Add an e820 region to the e820 map.
+/// Returns Ok(()) if successful, or an error if there is no space left in the map.
+fn add_e820_entry(params: &mut boot_params, range: AddressRange, mem_type: E820Type) -> anyhow::Result<()> {
+    if params.e820_entries >= params.e820_table.len() as u8 {
+        return Err(anyhow!(format!("invalid e820 configuration")));
+    }
+
+    let size = range.len().ok_or(anyhow!(format!("invalid e820 configuration")))?;
+
+    params.e820_table[params.e820_entries as usize].addr = range.start;
+    params.e820_table[params.e820_entries as usize].size = size;
+    params.e820_table[params.e820_entries as usize].type_ = mem_type as u32;
+    params.e820_entries += 1;
 
     Ok(())
 }
@@ -143,7 +173,7 @@ fn vm_load_image<T: GuestMemory + Send, P: AsRef<Path>>(
 
     let region = MmapRegion::<()>::from_file(kernel_file, kernel_size as usize)
         .context("failed to mmap the kernel image")?;
-    let raw_boot = mem.get_host_address(GuestAddress(0x10000))?;
+    let raw_boot = mem.get_host_address(ZERO_PAGE_START)?;
 
     unsafe { raw_boot.copy_from(region.as_ptr(), std::mem::size_of::<boot_params>()) };
 
@@ -156,32 +186,48 @@ fn vm_load_image<T: GuestMemory + Send, P: AsRef<Path>>(
     boot.hdr.ext_loader_ver = 0x0;
     boot.hdr.cmd_line_ptr = 0x20000;
 
-    let cmdline = mem.get_host_address(GuestAddress(0x20000))?;
+    let cmdline = mem.get_host_address(CMDLINE_START)?;
     unsafe {
         cmdline.copy_from(KERNEL_OPTS.as_ptr(), KERNEL_OPTS.len());
     }
 
-    let kernel = mem.get_host_address(GuestAddress(0x100000))?;
+    let kernel = mem.get_host_address(HIGH_RAM_START)?;
     let setupsz = (boot.hdr.setup_sects + 1) as usize * 512;
     let kernel_data_addr = region.as_ptr().wrapping_add(setupsz);
     unsafe {
         kernel.copy_from(kernel_data_addr, region.size() - setupsz);
     }
+    boot.e820_entries = 0;
+    add_e820_entry(boot, AddressRange {
+        start: 0,
+        end: 0xa0000 - 1,
+    }, E820Type::Ram)?;
 
-    boot.e820_table[0] = boot_e820_entry {
-        addr: 0x0,
-        size: 0xa0000 - 1,
-        type_: 1,
+    let guest_mem_end = mem.last_addr().0 - 1;
+
+    add_e820_entry(boot, AddressRange {
+        start: HIGH_RAM_START.0,
+        end: guest_mem_end.min(FIRST_ADDR_PAST_32BITS - 1),
+    }, E820Type::Ram)?;
+
+    let above_4g = AddressRange {
+        start: FIRST_ADDR_PAST_32BITS,
+        end: guest_mem_end,
     };
 
-    boot.e820_table[1] = boot_e820_entry {
-        addr: 0x100000,
-        size: RAM_SIZE as u64 - 0x100000,
-        type_: 1,
-    };
+    if !above_4g.is_empty() {
+        add_e820_entry(boot, above_4g, E820Type::Ram)?;
+    }
 
-    boot.e820_entries = 2;
-
+    // Reserve memory section for Identity map and TSS
+    add_e820_entry(
+        boot,
+        AddressRange {
+            start: IDENTIFY_MAP_ADDR.0,
+            end: TSS_ADDRESS_END.0 - 1,
+        },
+        E820Type::Reserved,
+    )?;
     Ok(())
 }
 
@@ -200,10 +246,10 @@ fn main() -> anyhow::Result<()> {
     let ranges = vec![(GuestAddress(0), RAM_SIZE)];
     let mem = GuestMemoryMmap::<()>::from_ranges(&ranges)?;
     let mut vmm = KvmVm::new(mem)?;
-    vmm.set_tss_addr(GuestAddress(TSS_ADDRESS as u64))?;
-    vmm.set_identity_map_addr(GuestAddress(IDENTIFY_MAP_ADDR))?;
+    vmm.set_tss_addr(GuestAddress(TSS_ADDRESS.0))?;
+    vmm.set_identity_map_addr(GuestAddress(IDENTIFY_MAP_ADDR.0))?;
     let mut irq_chip: KvmKernelIrqChip<GuestMemoryMmap> = KvmKernelIrqChip::new(vmm.try_clone()?)?;
-    
+
     let com_evt_1_3 = devices::IrqEdgeEvent::new()?;
 
     let clone_fd = com_evt_1_3.get_trigger().try_clone()?;
@@ -228,10 +274,8 @@ fn main() -> anyhow::Result<()> {
 
     vm_load_image(&mut vmm, cli.kernel)?;
     vm_load_initrd(&mut vmm, cli.initrd)?;
-    
 
     let mut vcpu = vmm.create_vcpu(0)?;
-    info!("start to register irq event");
     irq_chip.register_edge_irq_event(X86_64_SERIAL_1_3_IRQ, &com_evt_1_3, source)?;
     loop {
         let res = vcpu.run()?;

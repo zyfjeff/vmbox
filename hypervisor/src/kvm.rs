@@ -54,12 +54,6 @@ pub(crate) fn host_phys_addr_bits() -> u8 {
     }
 }
 
-// TODO(tinqian.zyf): 为啥是这两个地址
-// TSS后面跟着Identify map、TSS的大小是 3 * 4KB
-// Identify map 的大小是4K
-const TSS_ADDRESS: usize = 0xfffbd000;
-const IDENTIFY_MAP_ADDR: u64 = 0xffffc000;
-
 // This function translates an IrqSrouceChip to the kvm u32 equivalent. It has a different
 // implementation between x86_64 and aarch64 because the irqchip KVM constants are not defined on
 // all architectures.
@@ -308,7 +302,7 @@ impl<T: GuestMemory + Send> Vm for KvmVm<T> {
     }
 
     fn get_guest_phys_addr_bits(&self) -> u8 {
-        todo!()
+        host_phys_addr_bits()
     }
 
     /// Gets the guest-mapped memory for the Vm.

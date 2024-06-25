@@ -20,12 +20,16 @@ sync = { path = "sync" }
 base = { path = "base" }
 hypervisor = { path = "hypervisor" }
 devices = { path = "devices" }
+arch = { path = "arch" }
+resources = { path = "resources" }
 
 [workspace]
 members = [ 
+    "arch", 
     "base",
     "base/event_token_derive",
     "devices",
-    "hypervisor",
+    "hypervisor", 
+    "resources",
     "sync",
 ]

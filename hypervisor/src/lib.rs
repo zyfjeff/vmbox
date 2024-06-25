@@ -1,5 +1,8 @@
 use std::sync::MutexGuard;
 
+use arch::BOOT_STACK_POINTER;
+use arch::HIGH_RAM_START;
+use arch::ZERO_PAGE_START;
 use base::Error;
 use base::Result;
 use kvm_bindings::{kvm_msr_entry, CpuId, MsrList, Msrs};
@@ -141,8 +144,9 @@ impl<'a, T: GuestMemory + Send> Vcpu<'a, T> {
 
         let mut regs = fd.get_regs().map_err(|e| Error::new(e.errno()))?;
         regs.rflags = 2;
-        regs.rip = 0x100000;
-        regs.rsi = 0x10000;
+        regs.rsp = BOOT_STACK_POINTER;
+        regs.rip = HIGH_RAM_START.0;
+        regs.rsi = ZERO_PAGE_START.0;
 
         fd.set_regs(&regs).map_err(|e| Error::new(e.errno()))?;
 
