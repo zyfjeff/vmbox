@@ -6,7 +6,11 @@ use std::sync::{Arc, OnceLock};
 use std::{mem::MaybeUninit, path::PathBuf};
 
 use anyhow::{anyhow, Context};
-use arch::{CMDLINE_START, FIRST_ADDR_PAST_32BITS, HIGH_RAM_START, IDENTIFY_MAP_ADDR, TSS_ADDRESS, TSS_ADDRESS_END, ZERO_PAGE_START};
+use arch::{
+    arch_memory_regions, CMDLINE_START, DEFAULT_PCIE_CFG_MMIO_END, DEFAULT_PCIE_CFG_MMIO_START,
+    FIRST_ADDR_PAST_32BITS, HIGH_RAM_START, IDENTIFY_MAP_ADDR, PCI_MMIO_START, TSS_ADDRESS,
+    TSS_ADDRESS_END, ZERO_PAGE_START,
+};
 use clap::Parser;
 use devices::irqchip::{IrqChip, IrqEventSource, KvmKernelIrqChip};
 use devices::serial_device::ConsoleInput;
@@ -22,7 +26,7 @@ use linux_loader::loader::bootparam::{boot_params, CAN_USE_HEAP, KEEP_SEGMENTS};
 
 mod mmap;
 
-const RAM_SIZE: usize = 1 << 31;
+const RAM_SIZE: usize = 1 << 32;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
 const X86_64_SERIAL_2_4_IRQ: u32 = 3;
 
@@ -140,15 +144,20 @@ enum E820Type {
     Reserved = 0x2,
 }
 
-
 /// Add an e820 region to the e820 map.
 /// Returns Ok(()) if successful, or an error if there is no space left in the map.
-fn add_e820_entry(params: &mut boot_params, range: AddressRange, mem_type: E820Type) -> anyhow::Result<()> {
+fn add_e820_entry(
+    params: &mut boot_params,
+    range: AddressRange,
+    mem_type: E820Type,
+) -> anyhow::Result<()> {
     if params.e820_entries >= params.e820_table.len() as u8 {
         return Err(anyhow!(format!("invalid e820 configuration")));
     }
 
-    let size = range.len().ok_or(anyhow!(format!("invalid e820 configuration")))?;
+    let size = range
+        .len()
+        .ok_or(anyhow!(format!("invalid e820 configuration")))?;
 
     params.e820_table[params.e820_entries as usize].addr = range.start;
     params.e820_table[params.e820_entries as usize].size = size;
@@ -198,17 +207,25 @@ fn vm_load_image<T: GuestMemory + Send, P: AsRef<Path>>(
         kernel.copy_from(kernel_data_addr, region.size() - setupsz);
     }
     boot.e820_entries = 0;
-    add_e820_entry(boot, AddressRange {
-        start: 0,
-        end: 0xa0000 - 1,
-    }, E820Type::Ram)?;
+    add_e820_entry(
+        boot,
+        AddressRange {
+            start: 0,
+            end: 0xa0000 - 1,
+        },
+        E820Type::Ram,
+    )?;
 
     let guest_mem_end = mem.last_addr().0 - 1;
 
-    add_e820_entry(boot, AddressRange {
-        start: HIGH_RAM_START.0,
-        end: guest_mem_end.min(FIRST_ADDR_PAST_32BITS - 1),
-    }, E820Type::Ram)?;
+    add_e820_entry(
+        boot,
+        AddressRange {
+            start: HIGH_RAM_START.0,
+            end: guest_mem_end.min(PCI_MMIO_START - 1),
+        },
+        E820Type::Ram,
+    )?;
 
     let above_4g = AddressRange {
         start: FIRST_ADDR_PAST_32BITS,
@@ -218,6 +235,15 @@ fn vm_load_image<T: GuestMemory + Send, P: AsRef<Path>>(
     if !above_4g.is_empty() {
         add_e820_entry(boot, above_4g, E820Type::Ram)?;
     }
+
+    add_e820_entry(
+        boot,
+        AddressRange {
+            start: DEFAULT_PCIE_CFG_MMIO_START,
+            end: DEFAULT_PCIE_CFG_MMIO_END,
+        },
+        E820Type::Reserved,
+    )?;
 
     // Reserve memory section for Identity map and TSS
     add_e820_entry(
@@ -243,7 +269,7 @@ fn main() -> anyhow::Result<()> {
         return Err(anyhow!(format!("kernel {:?} not exists", cli.kernel)));
     }
 
-    let ranges = vec![(GuestAddress(0), RAM_SIZE)];
+    let ranges = arch_memory_regions(RAM_SIZE as u64);
     let mem = GuestMemoryMmap::<()>::from_ranges(&ranges)?;
     let mut vmm = KvmVm::new(mem)?;
     vmm.set_tss_addr(GuestAddress(TSS_ADDRESS.0))?;
