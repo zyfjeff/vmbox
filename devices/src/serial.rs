@@ -373,7 +373,8 @@ impl Serial {
                                     Ok(0) => {
                                         return rx;
                                     }
-                                    Ok(_) => {
+                                    Ok(count) => {
+                                        assert!(count == 1);
                                         if send_channel.send(rx_buf[0]).is_err() {
                                             // The receiver has disconnected.
                                             return rx;

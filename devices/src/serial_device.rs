@@ -124,6 +124,12 @@ impl ConsoleInput {
     }
 }
 
+impl Default for ConsoleInput {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl io::Read for ConsoleInput {
     fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
         read_raw_stdin(out).map_err(|e| e.into())

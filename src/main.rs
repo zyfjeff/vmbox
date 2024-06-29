@@ -4,16 +4,16 @@ use std::{mem::MaybeUninit, path::PathBuf};
 
 use anyhow::anyhow;
 use arch::{arch_memory_regions, vm_load_image, vm_load_initrd, IDENTIFY_MAP_ADDR, TSS_ADDRESS};
+use base::syscall;
 use clap::Parser;
 use devices::irqchip::{IrqChip, IrqEventSource, KvmKernelIrqChip};
 use devices::serial_device::ConsoleInput;
 use devices::{Bus, BusDevice, BusType, Serial, SERIAL_ADDR};
+use hypervisor::{KvmVm, Vm};
 use kvm_ioctls::VcpuExit;
 use log::info;
 use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemoryMmap};
-
-use hypervisor::{KvmVm, Vm};
 
 mod mmap;
 
@@ -23,21 +23,6 @@ const X86_64_SERIAL_1_3_IRQ: u32 = 4;
 const X86_64_SERIAL_2_4_IRQ: u32 = 3;
 
 static SAVED_TERMIOS: OnceLock<nix::libc::termios> = OnceLock::new();
-
-pub fn errno_result<T>() -> anyhow::Result<T> {
-    Err(std::io::Error::last_os_error().into())
-}
-
-macro_rules! syscall {
-    ($e:expr) => {{
-        let res = $e;
-        if res < 0 {
-            $crate::errno_result()
-        } else {
-            Ok(res)
-        }
-    }};
-}
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -68,7 +53,7 @@ fn set_input_mode() -> anyhow::Result<()> {
 
     let mut tattr: nix::libc::termios = unsafe { tattr.assume_init() };
 
-    SAVED_TERMIOS.get_or_init(|| tattr.clone());
+    SAVED_TERMIOS.get_or_init(|| tattr);
     tattr.c_cflag &= !(nix::libc::ICANON | nix::libc::ECHO | nix::libc::ISIG);
     syscall!(unsafe { nix::libc::tcsetattr(nix::libc::STDIN_FILENO, nix::libc::TCSANOW, &tattr) })?;
 
@@ -117,9 +102,9 @@ fn main() -> anyhow::Result<()> {
         .insert(Arc::new(Mutex::new(serial)), SERIAL_ADDR[0], 0x8)
         .unwrap();
 
-    let mut mem = vmm.get_memory_lock();
-    vm_load_image(&mut *mem, cli.kernel)?;
-    vm_load_initrd(&mut *mem, cli.initrd, RAM_SIZE)?;
+    let mem = vmm.get_memory_lock();
+    vm_load_image(&*mem, cli.kernel)?;
+    vm_load_initrd(&*mem, cli.initrd, RAM_SIZE)?;
 
     let mut vcpu = vmm.create_vcpu(0)?;
     irq_chip.register_edge_irq_event(X86_64_SERIAL_1_3_IRQ, &com_evt_1_3, source)?;

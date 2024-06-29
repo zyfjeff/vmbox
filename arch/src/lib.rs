@@ -67,7 +67,7 @@ fn add_e820_entry(
 }
 
 pub fn vm_load_image<T: GuestMemory + Send, P: AsRef<Path>>(
-    mem: &mut T,
+    mem: &T,
     kernel_path: P,
 ) -> anyhow::Result<()> {
     let f = fs::OpenOptions::new()

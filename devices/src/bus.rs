@@ -5,7 +5,6 @@ use std::{
     sync::Arc,
 };
 
-use base;
 use sync::Mutex;
 use thiserror::Error;
 
@@ -290,7 +289,7 @@ impl Bus {
             .iter()
             .map(|(_, bus_entry)| bus_entry.device.clone())
             .filter(|dev| match dev {
-                BusDeviceEntry::OuterSync(dev) => seen_ptrs.insert(Arc::as_ptr(&dev) as *const u8),
+                BusDeviceEntry::OuterSync(dev) => seen_ptrs.insert(Arc::as_ptr(dev) as *const u8),
             })
             .collect()
     }

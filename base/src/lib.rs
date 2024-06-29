@@ -56,3 +56,15 @@ pub fn pagesize() -> usize {
     // Trivially safe
     unsafe { sysconf(_SC_PAGESIZE) as usize }
 }
+
+#[macro_export]
+macro_rules! syscall {
+    ($e:expr) => {{
+        let res = $e;
+        if res < 0 {
+            $crate::errno_result()
+        } else {
+            Ok(res)
+        }
+    }};
+}

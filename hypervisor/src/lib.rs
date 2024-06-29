@@ -109,18 +109,17 @@ impl<'a, T: GuestMemory + Send> Vcpu<'a, T> {
                 id.edx = 0x4d; /* M */
             }
         }
-        fd.set_cpuid2(&support_cpuid)
+        fd.set_cpuid2(support_cpuid)
             .map_err(|e| Error::new(e.errno()))?;
         Ok(())
     }
 
     pub fn init_cpu_msrs(fd: &VcpuFd) -> Result<()> {
-        let mut kvm_msrs_entry = Vec::new();
-        kvm_msrs_entry.push(kvm_msr_entry {
+        let kvm_msrs_entry = vec![kvm_msr_entry {
             index: MSR_IA32_MISC_ENABLE,
             data: MSR_IA32_MISC_ENABLE_FAST_STRING,
             ..Default::default()
-        });
+        }];
         let kvm_msrs_wrapper = Msrs::from_entries(&kvm_msrs_entry).unwrap();
         fd.set_msrs(&kvm_msrs_wrapper)
             .map_err(|e| Error::new(e.errno()))?;

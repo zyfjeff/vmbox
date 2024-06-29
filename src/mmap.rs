@@ -81,7 +81,7 @@ impl MemoryMapping {
         // SAFETY:
         // This is safe because we are creating an anonymous mapping in a place not already used by
         // any other area in this process.
-        unsafe { MemoryMapping::try_mmap(None, size, align, prot.into(), None) }
+        unsafe { MemoryMapping::try_mmap(None, size, align, prot, None) }
     }
 
     /// Maps the first `size` bytes of the given `fd` as read/write.
@@ -143,7 +143,7 @@ impl MemoryMapping {
                 None,
                 size,
                 Some(align),
-                prot.into(),
+                prot,
                 Some((fd, offset)),
                 populate,
             )
@@ -167,7 +167,7 @@ impl MemoryMapping {
         size: usize,
         prot: i32,
     ) -> Result<MemoryMapping> {
-        MemoryMapping::try_mmap(Some(addr), size, None, prot.into(), None)
+        MemoryMapping::try_mmap(Some(addr), size, None, prot, None)
     }
 
     /// Maps the `size` bytes starting at `offset` bytes of the given `fd` with
@@ -192,7 +192,7 @@ impl MemoryMapping {
         offset: u64,
         prot: i32,
     ) -> Result<MemoryMapping> {
-        MemoryMapping::try_mmap(Some(addr), size, None, prot.into(), Some((fd, offset)))
+        MemoryMapping::try_mmap(Some(addr), size, None, prot, Some((fd, offset)))
     }
 
     /// Helper wrapper around try_mmap_populate when without MAP_POPULATE
