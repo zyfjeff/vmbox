@@ -102,6 +102,7 @@ version = "0.1.0"
 dependencies = [
  "event_token_derive",
  "libc",
+ "log",
  "nix",
  "smallvec",
  "thiserror",

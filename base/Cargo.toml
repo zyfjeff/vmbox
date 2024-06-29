@@ -12,3 +12,4 @@ libc = "0.2.155"
 smallvec = "1.13" 
 event_token_derive = { path = "event_token_derive", version = "*" }
 nix = "0.29" 
+log = "0.4.21"   

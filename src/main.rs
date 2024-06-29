@@ -15,8 +15,6 @@ use log::info;
 use sync::Mutex;
 use vm_memory::{GuestAddress, GuestMemoryMmap};
 
-mod mmap;
-
 const RAM_SIZE: usize = 1 << 34;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
 #[allow(dead_code)]

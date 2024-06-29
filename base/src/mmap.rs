@@ -2,8 +2,8 @@ use nix::libc;
 use std::io;
 use std::{os::fd::AsRawFd, ptr::null_mut};
 
-use base::pagesize;
-use base::Error as ErrnoError;
+use crate::pagesize;
+use crate::Error as ErrnoError;
 use log::warn;
 
 #[derive(Debug, thiserror::Error)]
@@ -19,7 +19,7 @@ pub enum Error {
     #[error("requested alignment is incompatible")]
     InvalidAlignment,
     #[error("mmap related system call failed: {0}")]
-    SystemCallFailed(#[source] base::Error),
+    SystemCallFailed(#[source] crate::Error),
     #[error("requested offset is out of range of off_t")]
     InvalidOffset,
     #[error("failed to read from file to memory: {0}")]

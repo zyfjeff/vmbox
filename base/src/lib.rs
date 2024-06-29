@@ -5,6 +5,7 @@ mod descriptor;
 mod errno;
 mod event;
 mod flexible_array;
+mod mmap;
 mod notifiers;
 mod wait_context;
 mod worker_thread;
