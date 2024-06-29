@@ -17,7 +17,6 @@ use kvm_bindings::{
 };
 use kvm_ioctls::IoEventAddress;
 use kvm_ioctls::{Kvm, VmFd};
-use log::error;
 use std::arch::x86_64::__cpuid;
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
@@ -62,10 +61,6 @@ pub(super) fn chip_to_kvm_chip(chip: IrqSourceChip) -> u32 {
         IrqSourceChip::PicPrimary => KVM_IRQCHIP_PIC_MASTER,
         IrqSourceChip::PicSecondary => KVM_IRQCHIP_PIC_SLAVE,
         IrqSourceChip::Ioapic => KVM_IRQCHIP_IOAPIC,
-        _ => {
-            error!("Invalid IrqChipSource for X86 {:?}", chip);
-            0
-        }
     }
 }
 

@@ -9,4 +9,4 @@ edition = "2021"
 vm-memory = { version = "0.14", features = ["backend-mmap"]}
 linux-loader = "0.11.0" 
 resources = { path = "../resources" }
-anyhow = "1.0" 
+thiserror = "1.0" 

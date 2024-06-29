@@ -84,9 +84,9 @@ checksum = "f538837af36e6f6a9be0faa67f9a314f8119e4e4b5867c6ab40ed60360142519"
 name = "arch"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "linux-loader",
  "resources",
+ "thiserror",
  "vm-memory",
 ]
 

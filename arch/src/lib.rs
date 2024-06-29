@@ -1,14 +1,32 @@
 mod layout;
 
-use anyhow::{anyhow, Context};
-use std::{fs, os::linux::fs::MetadataExt, path::Path};
+use std::{fs, io, os::linux::fs::MetadataExt, path::Path, result};
 
 pub use layout::*;
 use linux_loader::loader::bootparam::{boot_params, CAN_USE_HEAP, KEEP_SEGMENTS};
 use resources::AddressRange;
+use thiserror::Error;
 use vm_memory::{FileOffset, GuestAddress, GuestMemory, MmapRegion};
 
 const KERNEL_OPTS: &'static str = "console=ttyS0 pci=conf1";
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("failed to open the kernel image: {0}")]
+    LoadKernel(io::Error),
+    #[error("failed to open the initrd image: {0}")]
+    LoadInitrd(io::Error),
+    #[error("invalid e820 configuration")]
+    InvalidE820Config,
+    #[error("failed to mmap file region: {0}")]
+    FaildedMmapRegion(vm_memory::mmap::MmapRegionError),
+    #[error("invalid address: {0}")]
+    InvalidAddress(vm_memory::GuestMemoryError),
+    #[error("not enough memory")]
+    NotEnoughMemory,
+}
+
+pub type Result<T> = result::Result<T, Error>;
 
 /// Returns a Vec of the valid memory addresses.
 /// These should be used to configure the GuestMemory structure for the platform.
@@ -45,18 +63,12 @@ enum E820Type {
 
 /// Add an e820 region to the e820 map.
 /// Returns Ok(()) if successful, or an error if there is no space left in the map.
-fn add_e820_entry(
-    params: &mut boot_params,
-    range: AddressRange,
-    mem_type: E820Type,
-) -> anyhow::Result<()> {
+fn add_e820_entry(params: &mut boot_params, range: AddressRange, mem_type: E820Type) -> Result<()> {
     if params.e820_entries >= params.e820_table.len() as u8 {
-        return Err(anyhow!(format!("invalid e820 configuration")));
+        return Err(Error::InvalidE820Config);
     }
 
-    let size = range
-        .len()
-        .ok_or(anyhow!(format!("invalid e820 configuration")))?;
+    let size = range.len().ok_or(Error::InvalidE820Config)?;
 
     params.e820_table[params.e820_entries as usize].addr = range.start;
     params.e820_table[params.e820_entries as usize].size = size;
@@ -66,21 +78,20 @@ fn add_e820_entry(
     Ok(())
 }
 
-pub fn vm_load_image<T: GuestMemory + Send, P: AsRef<Path>>(
-    mem: &T,
-    kernel_path: P,
-) -> anyhow::Result<()> {
+pub fn vm_load_image<T: GuestMemory + Send, P: AsRef<Path>>(mem: &T, kernel_path: P) -> Result<()> {
     let f = fs::OpenOptions::new()
         .read(true)
         .write(true)
         .open(kernel_path)
-        .context("failed to read kernel image")?;
-    let kernel_size = f.metadata()?.st_size();
+        .map_err(|e| Error::LoadKernel(e))?;
+    let kernel_size = f.metadata().map_err(|e| Error::LoadKernel(e))?.st_size();
     let kernel_file = FileOffset::new(f, 0);
 
     let region = MmapRegion::<()>::from_file(kernel_file, kernel_size as usize)
-        .context("failed to mmap the kernel image")?;
-    let raw_boot = mem.get_host_address(ZERO_PAGE_START)?;
+        .map_err(|e| Error::FaildedMmapRegion(e))?;
+    let raw_boot = mem
+        .get_host_address(ZERO_PAGE_START)
+        .map_err(|e| Error::InvalidAddress(e))?;
 
     unsafe { raw_boot.copy_from(region.as_ptr(), std::mem::size_of::<boot_params>()) };
 
@@ -93,12 +104,16 @@ pub fn vm_load_image<T: GuestMemory + Send, P: AsRef<Path>>(
     boot.hdr.ext_loader_ver = 0x0;
     boot.hdr.cmd_line_ptr = 0x20000;
 
-    let cmdline = mem.get_host_address(CMDLINE_START)?;
+    let cmdline = mem
+        .get_host_address(CMDLINE_START)
+        .map_err(|e| Error::InvalidAddress(e))?;
     unsafe {
         cmdline.copy_from(KERNEL_OPTS.as_ptr(), KERNEL_OPTS.len());
     }
 
-    let kernel = mem.get_host_address(HIGH_RAM_START)?;
+    let kernel = mem
+        .get_host_address(HIGH_RAM_START)
+        .map_err(|e| Error::InvalidAddress(e))?;
     let setupsz = (boot.hdr.setup_sects + 1) as usize * 512;
     let kernel_data_addr = region.as_ptr().wrapping_add(setupsz);
     unsafe {
@@ -159,18 +174,20 @@ pub fn vm_load_initrd<T: GuestMemory + Send, P: AsRef<Path>>(
     mem: &T,
     initrd_path: P,
     mem_size: usize,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let f = fs::OpenOptions::new()
         .read(true)
         .write(true)
         .open(initrd_path)
-        .context("failed to open the initrd")?;
-    let initrd_size = f.metadata()?.st_size();
+        .map_err(|e| Error::LoadInitrd(e))?;
+    let initrd_size = f.metadata().map_err(|e| Error::LoadKernel(e))?.st_size();
     let initrd_file = FileOffset::new(f, 0);
     let region = MmapRegion::<()>::from_file(initrd_file, initrd_size as usize)
-        .context("failed to mmap the initrd")?;
+        .map_err(|e| Error::FaildedMmapRegion(e))?;
 
-    let raw_boot = mem.get_host_address(ZERO_PAGE_START)?;
+    let raw_boot = mem
+        .get_host_address(ZERO_PAGE_START)
+        .map_err(|e| Error::InvalidAddress(e))?;
     let boot = unsafe { &mut *(raw_boot as *const boot_params as *mut boot_params) };
 
     let mut initrd_addr_max = u64::from(boot.hdr.initrd_addr_max);
@@ -188,7 +205,7 @@ pub fn vm_load_initrd<T: GuestMemory + Send, P: AsRef<Path>>(
 
     loop {
         if initrd_addr < HIGH_RAM_START.0 as u32 {
-            return Err(anyhow!("Not enough memory for initrd"));
+            return Err(Error::NotEnoughMemory);
         }
         if (initrd_addr as usize) < (mem_size - region.size()) {
             break;
@@ -197,7 +214,9 @@ pub fn vm_load_initrd<T: GuestMemory + Send, P: AsRef<Path>>(
         initrd_addr = initrd_addr - HIGH_RAM_START.0 as u32;
     }
 
-    let kernel_initrd_addr = mem.get_host_address(GuestAddress(initrd_addr as u64))?;
+    let kernel_initrd_addr = mem
+        .get_host_address(GuestAddress(initrd_addr as u64))
+        .map_err(|e| Error::InvalidAddress(e))?;
     unsafe {
         kernel_initrd_addr.copy_from(region.as_ptr(), initrd_size as usize);
     }
