@@ -1,7 +1,6 @@
 use vm_memory::GuestAddress;
 
 const MB: u64 = 1 << 20;
-const GB: u64 = 1 << 30;
 
 pub const START_OF_RAM_32BITS: u64 = 0;
 
