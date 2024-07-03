@@ -82,7 +82,6 @@ pub enum IrqSourceChip {
 }
 
 pub mod kvm;
-
 pub use kvm::KvmVm;
 
 pub struct Vcpu<'a, T: GuestMemory + Send> {
@@ -155,6 +154,10 @@ impl<'a, T: GuestMemory + Send> Vcpu<'a, T> {
     pub fn run(&mut self) -> Result<VcpuExit> {
         let res = self.fd.run().map_err(|e| Error::new(e.errno()))?;
         Ok(res)
+    }
+
+    pub fn set_immediate_exit(&mut self, exit: bool) {
+        self.fd.set_kvm_immediate_exit(exit.into());
     }
 }
 

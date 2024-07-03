@@ -13,6 +13,7 @@ thiserror = "1.0"
 anyhow = "1.0" 
 clap = { version = "4.5", features = ["derive"] }
 nix = "0.29" 
+libc = "0.2.155"   
 log = "0.4.21"   
 env_logger = "0.11.3" 
 sync = { path = "sync" }

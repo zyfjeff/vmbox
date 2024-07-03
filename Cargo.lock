@@ -525,6 +525,7 @@ dependencies = [
  "hypervisor",
  "kvm-bindings",
  "kvm-ioctls",
+ "libc",
  "log",
  "nix",
  "resources",

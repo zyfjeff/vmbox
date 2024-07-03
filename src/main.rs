@@ -10,10 +10,12 @@ use devices::irqchip::{IrqChip, IrqEventSource, KvmKernelIrqChip};
 use devices::serial_device::ConsoleInput;
 use devices::{Bus, BusDevice, BusType, Serial, SERIAL_ADDR};
 use hypervisor::{KvmVm, Vm};
-use kvm_ioctls::VcpuExit;
-use log::info;
+use log::{error, info};
 use sync::Mutex;
+use vcpu::vcpu_loop;
 use vm_memory::{GuestAddress, GuestMemoryMmap};
+
+mod vcpu;
 
 const RAM_SIZE: usize = 1 << 34;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
@@ -106,19 +108,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut vcpu = vmm.create_vcpu(0)?;
     irq_chip.register_edge_irq_event(X86_64_SERIAL_1_3_IRQ, &com_evt_1_3, source)?;
-    loop {
-        let res = vcpu.run()?;
-        match res {
-            VcpuExit::IoIn(address, data) => {
-                io_bus.read(address as u64, data);
-            }
-            VcpuExit::IoOut(address, data) => {
-                io_bus.write(address as u64, data);
-            }
-
-            _ => {
-                print!("unhanle vcpu exit event : {:?}", res)
-            }
-        }
-    }
+    let exit = vcpu_loop(&mut vcpu, io_bus.as_ref());
+    error!("vcpu exit: {:?}", exit);
+    Ok(())
 }
