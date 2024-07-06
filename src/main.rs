@@ -10,9 +10,9 @@ use devices::irqchip::{IrqChip, IrqEventSource, KvmKernelIrqChip};
 use devices::serial_device::ConsoleInput;
 use devices::{Bus, BusDevice, BusType, Serial, SERIAL_ADDR};
 use hypervisor::{KvmVm, Vm};
-use log::{error, info};
+use log::info;
 use sync::Mutex;
-use vcpu::vcpu_loop;
+use vcpu::run_vcpu;
 use vm_memory::{GuestAddress, GuestMemoryMmap};
 
 mod vcpu;
@@ -106,9 +106,9 @@ fn main() -> anyhow::Result<()> {
     vm_load_image(&*mem, cli.kernel)?;
     vm_load_initrd(&*mem, cli.initrd, RAM_SIZE)?;
 
-    let mut vcpu = vmm.create_vcpu(0)?;
+    let vcpu = vmm.create_vcpu(0)?;
     irq_chip.register_edge_irq_event(X86_64_SERIAL_1_3_IRQ, &com_evt_1_3, source)?;
-    let exit = vcpu_loop(&mut vcpu, io_bus.as_ref());
-    error!("vcpu exit: {:?}", exit);
+    let vcpu_join = run_vcpu(vcpu, Arc::clone(&io_bus))?;
+    vcpu_join.join().unwrap();
     Ok(())
 }

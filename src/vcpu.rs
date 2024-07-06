@@ -1,3 +1,9 @@
+use std::{
+    sync::Arc,
+    thread::{self, JoinHandle},
+};
+
+use base::Result;
 use devices::Bus;
 use hypervisor::Vcpu;
 use kvm_bindings::{KVM_SYSTEM_EVENT_CRASH, KVM_SYSTEM_EVENT_RESET, KVM_SYSTEM_EVENT_SHUTDOWN};
@@ -10,11 +16,25 @@ pub enum ExitState {
     Reset,
     Stop,
     Crash,
-    GuestPanic,
 }
 
-pub fn vcpu_loop<T: GuestMemory + Send>(vcpu: &mut Vcpu<T>, io_bus: &Bus) -> ExitState {
+pub fn run_vcpu<T: GuestMemory + Send + 'static>(
+    vcpu: Vcpu<T>,
+    io_bus: Arc<Bus>,
+) -> Result<JoinHandle<()>> {
+    let apic_id = vcpu.get_apic_id().clone();
+    let res = thread::Builder::new()
+        .name(format!("vmbox_vcpu_{}", apic_id))
+        .spawn(move || {
+            let exit_state = vcpu_loop(vcpu, io_bus);
+            error!("unexpect vcpu exit: {:?}", exit_state);
+        })?;
+    Ok(res)
+}
+
+pub fn vcpu_loop<T: GuestMemory + Send>(vcpu: Vcpu<T>, io_bus: Arc<Bus>) -> ExitState {
     let mut interrupted_by_signal = false;
+    let mut vcpu = vcpu;
     loop {
         if !interrupted_by_signal {
             match vcpu.run() {

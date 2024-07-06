@@ -84,19 +84,20 @@ pub enum IrqSourceChip {
 pub mod kvm;
 pub use kvm::KvmVm;
 
-pub struct Vcpu<'a, T: GuestMemory + Send> {
-    vm: &'a KvmVm<T>,
+pub struct Vcpu<T: GuestMemory + Send> {
+    vm: KvmVm<T>,
     fd: VcpuFd,
+    apic_id: u32,
 }
 
-impl<'a, T: GuestMemory + Send> Vcpu<'a, T> {
-    pub fn new(fd: VcpuFd, vm: &'a KvmVm<T>) -> Result<Self> {
+impl<T: GuestMemory + Send> Vcpu<T> {
+    pub fn new(fd: VcpuFd, vm: KvmVm<T>, apic_id: u32) -> Result<Self> {
         Self::init_cpu_regs(&fd)?;
         let mut cpuid = vm.get_hypervisor().get_supported_cpuid()?;
         Self::init_cpu_id(&fd, &mut cpuid)?;
         Self::init_cpu_msrs(&fd)?;
 
-        Ok(Vcpu { fd, vm })
+        Ok(Vcpu { fd, vm, apic_id })
     }
 
     pub fn init_cpu_id(fd: &VcpuFd, support_cpuid: &mut CpuId) -> Result<()> {
@@ -154,6 +155,10 @@ impl<'a, T: GuestMemory + Send> Vcpu<'a, T> {
     pub fn run(&mut self) -> Result<VcpuExit> {
         let res = self.fd.run().map_err(|e| Error::new(e.errno()))?;
         Ok(res)
+    }
+
+    pub fn get_apic_id(&self) -> u32 {
+        self.apic_id
     }
 
     pub fn set_immediate_exit(&mut self, exit: bool) {

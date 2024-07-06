@@ -333,7 +333,8 @@ impl<T: GuestMemory + Send> Vm for KvmVm<T> {
             .vm_fd
             .create_vcpu(id)
             .map_err(|e| Error::new(e.errno()))?;
-        Vcpu::new(vcpu_fd, self)
+        let kvm_cloned = self.try_clone()?;
+        Vcpu::new(vcpu_fd, kvm_cloned, id as u32)
     }
 
     fn set_tss_addr(&self, addr: GuestAddress) -> Result<()> {
