@@ -105,10 +105,18 @@ fn main() -> anyhow::Result<()> {
     let mem = vmm.get_memory_lock();
     vm_load_image(&*mem, cli.kernel)?;
     vm_load_initrd(&*mem, cli.initrd, RAM_SIZE)?;
-
-    let vcpu = vmm.create_vcpu(0)?;
     irq_chip.register_edge_irq_event(X86_64_SERIAL_1_3_IRQ, &com_evt_1_3, source)?;
-    let vcpu_join = run_vcpu(vcpu, Arc::clone(&io_bus))?;
-    vcpu_join.join().unwrap();
+    let mut all_vcpu_join = Vec::new();
+
+    for i in 0..8 {
+        let vcpu = vmm.create_vcpu(i)?;
+        let vcpu_join = run_vcpu(vcpu, Arc::clone(&io_bus))?;
+        all_vcpu_join.push(vcpu_join);
+    }
+    
+    all_vcpu_join.into_iter().for_each(|j| {
+        j.join().unwrap();
+    });
+
     Ok(())
 }
