@@ -24,7 +24,7 @@ arch = { path = "arch" }
 resources = { path = "resources" }
 
 [workspace]
-members = [ 
+members = [
     "arch", 
     "base",
     "base/event_token_derive",

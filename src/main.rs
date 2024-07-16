@@ -113,7 +113,7 @@ fn main() -> anyhow::Result<()> {
         let vcpu_join = run_vcpu(vcpu, Arc::clone(&io_bus))?;
         all_vcpu_join.push(vcpu_join);
     }
-    
+
     all_vcpu_join.into_iter().for_each(|j| {
         j.join().unwrap();
     });

@@ -4,6 +4,14 @@ const MB: u64 = 1 << 20;
 
 pub const START_OF_RAM_32BITS: u64 = 0;
 
+// ** EBDA reserved area (start: 640KiB, length: 384KiB) **
+pub const EBDA_START: GuestAddress = GuestAddress(0xa0000);
+
+// == Fixed constants within the "EBDA" range ==
+
+// ACPI RSDP table
+pub const RSDP_POINTER: GuestAddress = EBDA_START;
+
 // Make sure it align to 256MB for MTRR convenient
 const MEM_32BIT_GAP_SIZE: u64 = 768 * MB;
 

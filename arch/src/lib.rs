@@ -1,3 +1,4 @@
+mod acpi;
 mod layout;
 
 use std::{fs, io, os::linux::fs::MetadataExt, path::Path, result};
