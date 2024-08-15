@@ -22,6 +22,8 @@ hypervisor = { path = "hypervisor" }
 devices = { path = "devices" }
 arch = { path = "arch" }
 resources = { path = "resources" }
+acpi_tables = { git = "https://github.com/rust-vmm/acpi_tables", branch = "main" }
+zerocopy = { version = "0.7", features = ["alloc", "derive"] }
 
 [workspace]
 members = [

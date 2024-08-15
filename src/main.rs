@@ -16,6 +16,7 @@ use vcpu::run_vcpu;
 use vm_memory::{GuestAddress, GuestMemoryMmap};
 
 mod vcpu;
+mod acpi;
 
 const RAM_SIZE: usize = 1 << 34;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;

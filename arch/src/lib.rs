@@ -57,6 +57,26 @@ pub fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, usize)> {
     regions
 }
 
+pub fn get_x2apic_id(cpu_id: u32, topology: Option<(u16, u16, u16)>) -> u32 {
+    if let Some(t) = topology {
+        let thread_mask_width = u16::BITS - (t.0 - 1).leading_zeros();
+        let core_mask_width = u16::BITS - (t.1 - 1).leading_zeros();
+        let die_mask_width = u16::BITS - (t.2 - 1).leading_zeros();
+
+        let thread_id = cpu_id % (t.0 as u32);
+        let core_id = cpu_id / (t.0 as u32) % (t.1 as u32);
+        let die_id = cpu_id / ((t.0 * t.1) as u32) % (t.2 as u32);
+        let socket_id = cpu_id / ((t.0 * t.1 * t.2) as u32);
+
+        return thread_id
+            | (core_id << thread_mask_width)
+            | (die_id << (thread_mask_width + core_mask_width))
+            | (socket_id << (thread_mask_width + core_mask_width + die_mask_width));
+    }
+
+    cpu_id
+}
+
 enum E820Type {
     Ram = 0x01,
     Reserved = 0x2,
@@ -190,20 +210,7 @@ pub fn vm_load_initrd<T: GuestMemory + Send, P: AsRef<Path>>(
         .get_host_address(ZERO_PAGE_START)
         .map_err(|e| Error::InvalidAddress(e))?;
     let boot = unsafe { &mut *(raw_boot as *const boot_params as *mut boot_params) };
-
-    let mut initrd_addr_max = u64::from(boot.hdr.initrd_addr_max);
-    // Default initrd_addr_max for old kernels (see Documentation/x86/boot.txt).
-    if boot.hdr.initrd_addr_max == 0 {
-        initrd_addr_max = 0x37FFFFFF;
-    }
-
     let mut initrd_addr = boot.hdr.initrd_addr_max & !0xfffff;
-
-    let mem_max = mem.last_addr().0 - 1;
-    if initrd_addr_max > mem_max {
-        initrd_addr_max = mem_max;
-    }
-
     loop {
         if initrd_addr < HIGH_RAM_START.0 as u32 {
             return Err(Error::NotEnoughMemory);

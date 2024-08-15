@@ -2,7 +2,6 @@ use std::{
     sync::Arc,
     thread::{self, JoinHandle},
 };
-
 use base::Result;
 use devices::Bus;
 use hypervisor::Vcpu;
