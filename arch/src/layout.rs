@@ -60,3 +60,8 @@ pub const MEM_32BIT_DEVICES_SIZE: u64 = 640 << 20;
 
 // ** 64-bit RAM start (start: 4GiB, length: varies) **
 pub const RAM_64BIT_START: GuestAddress = GuestAddress(0x1_0000_0000);
+
+// source: linux/arch/x86/include/asm/apicdef.h
+pub const IO_APIC_DEFAULT_PHYS_BASE: u32 = 0xfec00000;
+// source: linux/arch/x86/include/asm/apicdef.h
+pub const APIC_DEFAULT_PHYS_BASE: u32 = 0xfee00000;

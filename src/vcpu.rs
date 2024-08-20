@@ -1,13 +1,13 @@
-use std::{
-    sync::Arc,
-    thread::{self, JoinHandle},
-};
 use base::Result;
 use devices::Bus;
 use hypervisor::Vcpu;
 use kvm_bindings::{KVM_SYSTEM_EVENT_CRASH, KVM_SYSTEM_EVENT_RESET, KVM_SYSTEM_EVENT_SHUTDOWN};
 use kvm_ioctls::VcpuExit;
 use log::{error, info, warn};
+use std::{
+    sync::Arc,
+    thread::{self, JoinHandle},
+};
 use vm_memory::GuestMemory;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

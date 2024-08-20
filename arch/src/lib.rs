@@ -57,16 +57,16 @@ pub fn arch_memory_regions(size: u64) -> Vec<(GuestAddress, usize)> {
     regions
 }
 
-pub fn get_x2apic_id(cpu_id: u32, topology: Option<(u16, u16, u16)>) -> u32 {
+pub fn get_x2apic_id(cpu_id: u32, topology: Option<(u32, u32, u32)>) -> u32 {
     if let Some(t) = topology {
-        let thread_mask_width = u16::BITS - (t.0 - 1).leading_zeros();
-        let core_mask_width = u16::BITS - (t.1 - 1).leading_zeros();
-        let die_mask_width = u16::BITS - (t.2 - 1).leading_zeros();
+        let thread_mask_width = u32::BITS - (t.0 - 1).leading_zeros();
+        let core_mask_width = u32::BITS - (t.1 - 1).leading_zeros();
+        let die_mask_width = u32::BITS - (t.2 - 1).leading_zeros();
 
-        let thread_id = cpu_id % (t.0 as u32);
-        let core_id = cpu_id / (t.0 as u32) % (t.1 as u32);
-        let die_id = cpu_id / ((t.0 * t.1) as u32) % (t.2 as u32);
-        let socket_id = cpu_id / ((t.0 * t.1 * t.2) as u32);
+        let thread_id = cpu_id % t.0;
+        let core_id = cpu_id / t.0 % t.1;
+        let die_id = cpu_id / (t.0 * t.1) % t.2;
+        let socket_id = cpu_id / (t.0 * t.1 * t.2);
 
         return thread_id
             | (core_id << thread_mask_width)
@@ -99,7 +99,11 @@ fn add_e820_entry(params: &mut boot_params, range: AddressRange, mem_type: E820T
     Ok(())
 }
 
-pub fn vm_load_image<T: GuestMemory + Send, P: AsRef<Path>>(mem: &T, kernel_path: P) -> Result<()> {
+pub fn vm_load_image<T: GuestMemory + Send, P: AsRef<Path>>(
+    mem: &T,
+    kernel_path: P,
+    rsdp: Option<GuestAddress>,
+) -> Result<()> {
     let f = fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -188,6 +192,10 @@ pub fn vm_load_image<T: GuestMemory + Send, P: AsRef<Path>>(mem: &T, kernel_path
         },
         E820Type::Reserved,
     )?;
+
+    if let Some(rsdp) = rsdp {
+        boot.acpi_rsdp_addr = rsdp.0;
+    }
     Ok(())
 }
 

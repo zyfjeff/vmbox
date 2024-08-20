@@ -15,8 +15,8 @@ use sync::Mutex;
 use vcpu::run_vcpu;
 use vm_memory::{GuestAddress, GuestMemoryMmap};
 
-mod vcpu;
 mod acpi;
+mod vcpu;
 
 const RAM_SIZE: usize = 1 << 34;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
@@ -102,15 +102,17 @@ fn main() -> anyhow::Result<()> {
     io_bus
         .insert(Arc::new(Mutex::new(serial)), SERIAL_ADDR[0], 0x8)
         .unwrap();
-
+    let cpu_ids: Vec<u8> = (0..8).collect();
     let mem = vmm.get_memory_lock();
-    vm_load_image(&*mem, cli.kernel)?;
+    let rsdp = acpi::create_acpi_tables(&*mem, &cpu_ids);
+
+    vm_load_image(&*mem, cli.kernel, rsdp)?;
     vm_load_initrd(&*mem, cli.initrd, RAM_SIZE)?;
     irq_chip.register_edge_irq_event(X86_64_SERIAL_1_3_IRQ, &com_evt_1_3, source)?;
     let mut all_vcpu_join = Vec::new();
 
-    for i in 0..8 {
-        let vcpu = vmm.create_vcpu(i)?;
+    for id in cpu_ids {
+        let vcpu = vmm.create_vcpu(id as u64)?;
         let vcpu_join = run_vcpu(vcpu, Arc::clone(&io_bus))?;
         all_vcpu_join.push(vcpu_join);
     }
